@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Embedding Viewer</title>
+    <script src="output_embeddings.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #result {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        #canvasContainer {
+            position: relative;
+            margin-top: 20px;
+        }
+        canvas {
+            border: 1px solid #ddd;
+        }
+        #zoomCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        button {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Token Embedding Viewer</h1>
+    <input type="text" id="tokenInput" placeholder="Enter a token">
+    <button onclick="showEmbedding()">Show Embedding</button>
+    <button onclick="plotAllEmbeddings()">Plot All Embeddings</button>
+    <button onclick="resetZoom()">Reset Zoom</button>
+    <div id="result"></div>
+    <div id="canvasContainer">
+        <canvas id="embeddingCanvas" width="600" height="600"></canvas>
+        <canvas id="zoomCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('embeddingCanvas');
+        const ctx = canvas.getContext('2d');
+        const zoomCanvas = document.getElementById('zoomCanvas');
+        const zoomCtx = zoomCanvas.getContext('2d');
+        let isZooming = false;
+        let zoomStart = { x: 0, y: 0 };
+        let zoomEnd = { x: 0, y: 0 };
+        let currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+
+        function drawCoordinateSystem() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(canvas.width, centerY);
+            ctx.moveTo(centerX, 0);
+            ctx.lineTo(centerX, canvas.height);
+            ctx.strokeStyle = '#ddd';
+            ctx.stroke();
+        }
+
+        function plotPoint(x, y, color = 'red', size = 1) {
+            const canvasX = (x - currentZoom.x) / currentZoom.width * canvas.width;
+            const canvasY = canvas.height - (y - currentZoom.y) / currentZoom.height * canvas.height;
+            ctx.beginPath();
+            ctx.arc(canvasX, canvasY, size, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        function showEmbedding() {
+            const token = document.getElementById('tokenInput').value;
+            const resultDiv = document.getElementById('result');
+
+            try {
+                const embedding = getEmbedding(token);
+                resultDiv.textContent = `Embedding for "${token}": [${embedding[0].toFixed(4)}, ${embedding[1].toFixed(4)}]`;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawCoordinateSystem();
+                plotAllEmbeddings(0.5);
+                plotPoint(embedding[0], embedding[1], 'red', 3);
+
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function plotAllEmbeddings(alpha = 1) {
+            const totalEmbeddings = embeddings.length / 2;
+            for (let i = 0; i < totalEmbeddings; i++) {
+                const x = embeddings[i * 2];
+                const y = embeddings[i * 2 + 1];
+                plotPoint(x, y, `rgba(0, 0, 255, ${alpha})`, 0.5);
+            }
+            document.getElementById('result').textContent = `Plotted ${totalEmbeddings} embeddings`;
+        }
+
+        function resetZoom() {
+            currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawCoordinateSystem();
+            plotAllEmbeddings();
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isZooming = true;
+            zoomStart = { x: e.offsetX, y: e.offsetY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isZooming) {
+                zoomEnd = { x: e.offsetX, y: e.offsetY };
+                drawZoomRect();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (isZooming) {
+                isZooming = false;
+                applyZoom();
+                zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+            }
+        });
+
+        function drawZoomRect() {
+            zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+            zoomCtx.beginPath();
+            zoomCtx.rect(zoomStart.x, zoomStart.y, zoomEnd.x - zoomStart.x, zoomEnd.y - zoomStart.y);
+            zoomCtx.strokeStyle = 'red';
+            zoomCtx.stroke();
+        }
+
+        function applyZoom() {
+            const newZoom = {
+                x: currentZoom.x + zoomStart.x / canvas.width * currentZoom.width,
+                y: currentZoom.y + (canvas.height - zoomEnd.y) / canvas.height * currentZoom.height,
+                width: Math.abs(zoomEnd.x - zoomStart.x) / canvas.width * currentZoom.width,
+                height: Math.abs(zoomEnd.y - zoomStart.y) / canvas.height * currentZoom.height
+            };
+            currentZoom = newZoom;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawCoordinateSystem();
+            plotAllEmbeddings();
+        }
+
+        resetZoom();
+    </script>
+</body>
+</html>

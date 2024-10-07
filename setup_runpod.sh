@@ -8,5 +8,7 @@ pip3 install huggingface-hub[cli]
 huggingface-cli login
 huggingface-cli download meta-llama/Meta-Llama-3-8B --include '*.safetensors'
 
+pip3 install -r requirements.txt
+
 git config --global user.name 'syvb'
 git config --global user.email 'me@iter.ca'
