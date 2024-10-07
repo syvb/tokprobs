@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Token Embedding Viewer</title>
-    <script src="output_embeddings.js"></script>
+    <script src="output_embeddings.js?v=2"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -38,6 +38,7 @@
     <h1>Token Embedding Viewer</h1>
     <input type="text" id="tokenInput" placeholder="Enter a token">
     <button onclick="showEmbedding()">Show Embedding</button>
+    <button onclick="toggleLabels()">Toggle Labels</button>
     <button onclick="plotAllEmbeddings()">Plot All Embeddings</button>
     <button onclick="resetZoom()">Reset Zoom</button>
     <div id="result"></div>
@@ -55,6 +56,17 @@
         let zoomStart = { x: 0, y: 0 };
         let zoomEnd = { x: 0, y: 0 };
         let currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+        let showLabels = false;
+        
+        // Constants
+        const ZOOM_THRESHOLD = 4;
+        const DEFAULT_POINT_SIZE = 0.5;
+        const ZOOMED_POINT_SIZE = 1.5;
+        
+        // Create a reverse mapping for fast token lookup
+        const idToToken = Object.fromEntries(
+            Object.entries(tokenToId).map(([token, id]) => [id, token])
+        );
 
         function drawCoordinateSystem() {
             const centerX = canvas.width / 2;
@@ -68,13 +80,36 @@
             ctx.stroke();
         }
 
-        function plotPoint(x, y, color = 'red', size = 1) {
+        function truncateLabel(label) {
+            return label.length > 10 ? label.slice(0, 10) + '…' : label;
+        }
+
+        function getZoomLevel() {
+            return 2 / currentZoom.width;
+        }
+
+        function plotPoint(x, y, color = 'red', size = DEFAULT_POINT_SIZE, label = '') {
             const canvasX = (x - currentZoom.x) / currentZoom.width * canvas.width;
             const canvasY = canvas.height - (y - currentZoom.y) / currentZoom.height * canvas.height;
+            
+            // Skip rendering if point is outside the viewport
+            if (canvasX < 0 || canvasX > canvas.width || canvasY < 0 || canvasY > canvas.height) {
+                return;
+            }
+            
+            const zoomLevel = getZoomLevel();
+            const adjustedSize = zoomLevel > ZOOM_THRESHOLD ? ZOOMED_POINT_SIZE : size;
+            
             ctx.beginPath();
-            ctx.arc(canvasX, canvasY, size, 0, 2 * Math.PI);
+            ctx.arc(canvasX, canvasY, adjustedSize, 0, 2 * Math.PI);
             ctx.fillStyle = color;
             ctx.fill();
+            
+            if (showLabels && label) {
+                ctx.fillStyle = 'black';
+                ctx.font = '10px monospace';
+                ctx.fillText(`"${truncateLabel(label)}"`, canvasX + 5, canvasY - 5);
+            }
         }
 
         function showEmbedding() {
@@ -88,7 +123,7 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 drawCoordinateSystem();
                 plotAllEmbeddings(0.5);
-                plotPoint(embedding[0], embedding[1], 'red', 3);
+                plotPoint(embedding[0], embedding[1], 'red', 3, token);
 
             } catch (error) {
                 resultDiv.textContent = `Error: ${error.message}`;
@@ -101,13 +136,24 @@
             for (let i = 0; i < totalEmbeddings; i++) {
                 const x = embeddings[i * 2];
                 const y = embeddings[i * 2 + 1];
-                plotPoint(x, y, `rgba(0, 0, 255, ${alpha})`, 0.5);
+                let label = '';
+                if (showLabels) {
+                    label = idToToken[i] || '';
+                }
+                plotPoint(x, y, `rgba(0, 0, 255, ${alpha})`, DEFAULT_POINT_SIZE, label);
             }
             document.getElementById('result').textContent = `Plotted ${totalEmbeddings} embeddings`;
         }
 
         function resetZoom() {
             currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawCoordinateSystem();
+            plotAllEmbeddings();
+        }
+
+        function toggleLabels() {
+            showLabels = !showLabels;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawCoordinateSystem();
             plotAllEmbeddings();

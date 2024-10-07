@@ -1,6 +1,32 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import json
+import re
+
+def clean_token(token):
+    # Define replacement rules
+    replacements = [
+        ('Ġ', ' '),  # Space at the beginning of a word
+        ('Ċ', '\n'),  # Newline
+        #('ĉ', '\r'),  # Carriage return
+        #('Ń', ' '),  # Space (less common representation)
+        #('Ă', '\t'),  # Tab
+        #('Ġ', ' '),  # Space (alternative representation)
+        #('Ė', ' '),  # Space (another alternative)
+        #('Ơ', ''),   # Empty string (remove this token)
+    ]
+    
+    # Apply replacements
+    for old, new in replacements:
+        token = token.replace(old, new)
+    
+    # Handle hex-encoded characters (e.g., \u0120)
+    token = re.sub(r'\\u[0-9a-fA-F]{4}', lambda m: chr(int(m.group(0)[2:], 16)), token)
+    
+    # Remove leading space if present
+    token = token.lstrip()
+    
+    return token
 
 # Load the model and tokenizer
 model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B", device_map="auto")
@@ -16,8 +42,8 @@ reduced_embeddings = torch.mm(output_embeddings, V[:, :2])
 # Convert to numpy for easier handling
 reduced_embeddings = reduced_embeddings.cpu().numpy()
 
-# Create a token to ID mapping
-token_to_id = {token: id for token, id in tokenizer.get_vocab().items()}
+# Create a cleaned token to ID mapping
+token_to_id = {clean_token(token): id for token, id in tokenizer.get_vocab().items()}
 
 # Create the JavaScript content
 js_content = f"""
