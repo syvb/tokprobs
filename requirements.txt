@@ -1,0 +1,4 @@
+torch>=2.1.0,<=2.3.1
+transformers~=4.45
+accelerate>=0.26.0,<0.35.0
+tsne-torch~=1.0.0
