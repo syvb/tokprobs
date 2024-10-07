@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Token Embedding Viewer</title>
-    <script src="output_embeddings.js?v=2"></script>
+    <script src="output_embeddings.js?v=5"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -57,11 +57,13 @@
         let zoomEnd = { x: 0, y: 0 };
         let currentZoom = { x: -1, y: -1, width: 2, height: 2 };
         let showLabels = false;
+        let fetchedEmbedding = null;
         
         // Constants
         const ZOOM_THRESHOLD = 4;
         const DEFAULT_POINT_SIZE = 0.5;
         const ZOOMED_POINT_SIZE = 1.5;
+        const FETCHED_POINT_SIZE = 5;
         
         // Create a reverse mapping for fast token lookup
         const idToToken = Object.fromEntries(
@@ -88,17 +90,21 @@
             return 2 / currentZoom.width;
         }
 
-        function plotPoint(x, y, color = 'red', size = DEFAULT_POINT_SIZE, label = '') {
+        function plotPoint(x, y, color = 'blue', size = DEFAULT_POINT_SIZE, label = '', isFixedSize = false) {
             const canvasX = (x - currentZoom.x) / currentZoom.width * canvas.width;
             const canvasY = canvas.height - (y - currentZoom.y) / currentZoom.height * canvas.height;
             
-            // Skip rendering if point is outside the viewport
             if (canvasX < 0 || canvasX > canvas.width || canvasY < 0 || canvasY > canvas.height) {
                 return;
             }
             
             const zoomLevel = getZoomLevel();
-            const adjustedSize = zoomLevel > ZOOM_THRESHOLD ? ZOOMED_POINT_SIZE : size;
+            let adjustedSize;
+            if (isFixedSize) {
+                adjustedSize = size;
+            } else {
+                adjustedSize = zoomLevel > ZOOM_THRESHOLD ? ZOOMED_POINT_SIZE : size;
+            }
             
             ctx.beginPath();
             ctx.arc(canvasX, canvasY, adjustedSize, 0, 2 * Math.PI);
@@ -112,18 +118,29 @@
             }
         }
 
-        function showEmbedding() {
+        async function showEmbedding() {
             const token = document.getElementById('tokenInput').value;
             const resultDiv = document.getElementById('result');
 
             try {
-                const embedding = getEmbedding(token);
-                resultDiv.textContent = `Embedding for "${token}": [${embedding[0].toFixed(4)}, ${embedding[1].toFixed(4)}]`;
+                const response = await fetch('/get_embedding', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: token }),
+                });
 
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawCoordinateSystem();
-                plotAllEmbeddings(0.5);
-                plotPoint(embedding[0], embedding[1], 'red', 3, token);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const data = await response.json();
+                fetchedEmbedding = data.embedding;
+
+                resultDiv.textContent = `Embedding for "${token}": [${fetchedEmbedding[0].toFixed(4)}, ${fetchedEmbedding[1].toFixed(4)}]`;
+
+                redrawCanvas();
 
             } catch (error) {
                 resultDiv.textContent = `Error: ${error.message}`;
@@ -145,18 +162,23 @@
             document.getElementById('result').textContent = `Plotted ${totalEmbeddings} embeddings`;
         }
 
-        function resetZoom() {
-            currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+        function redrawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawCoordinateSystem();
-            plotAllEmbeddings();
+            plotAllEmbeddings(0.5);
+            if (fetchedEmbedding) {
+                plotPoint(fetchedEmbedding[0], fetchedEmbedding[1], 'red', FETCHED_POINT_SIZE, '', true);
+            }
+        }
+
+        function resetZoom() {
+            currentZoom = { x: -1, y: -1, width: 2, height: 2 };
+            redrawCanvas();
         }
 
         function toggleLabels() {
             showLabels = !showLabels;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawCoordinateSystem();
-            plotAllEmbeddings();
+            redrawCanvas();
         }
 
         canvas.addEventListener('mousedown', (e) => {
@@ -195,9 +217,7 @@
                 height: Math.abs(zoomEnd.y - zoomStart.y) / canvas.height * currentZoom.height
             };
             currentZoom = newZoom;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawCoordinateSystem();
-            plotAllEmbeddings();
+            redrawCanvas();
         }
 
         resetZoom();
